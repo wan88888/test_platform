@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
+from django.conf import settings
 from .models import User, UserProfile
 
 class UserSimpleSerializer(serializers.ModelSerializer):
@@ -8,10 +9,20 @@ class UserSimpleSerializer(serializers.ModelSerializer):
         fields = ('id', 'username', 'email', 'avatar')
 
 class UserSerializer(serializers.ModelSerializer):
+    display_name = serializers.CharField(read_only=True)
+    avatar_url = serializers.CharField(read_only=True)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        identity = instance.feishu_identities.filter(app_id=settings.FEISHU_APP_ID).first()
+        data['display_name'] = (identity.display_name if identity else '') or instance.get_full_name() or instance.username
+        data['avatar_url'] = (identity.avatar_url if identity else '') or data.get('avatar') or ''
+        return data
+
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name', 
-                 'avatar', 'phone', 'department', 'position', 'is_active',
+                 'avatar', 'display_name', 'avatar_url', 'phone', 'department', 'position', 'is_active',
                  'date_joined', 'created_at', 'updated_at']
         read_only_fields = ['id', 'date_joined', 'created_at', 'updated_at']
 

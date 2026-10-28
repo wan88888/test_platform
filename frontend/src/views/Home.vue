@@ -24,8 +24,8 @@
 
           <el-dropdown @command="handleCommand">
             <span class="el-dropdown-link">
-              <el-avatar :size="32" :icon="UserFilled" />
-              <span class="username">{{ userStore.user?.username || $t('home.user') }}</span>
+              <el-avatar :size="32" :src="userStore.avatarUrl" :icon="UserFilled" />
+              <span class="username">{{ userStore.displayName || $t('home.user') }}</span>
               <el-icon class="el-icon--right"><arrow-down /></el-icon>
             </span>
             <template #dropdown>
@@ -41,7 +41,7 @@
           <el-dropdown trigger="click" @command="handleHeaderCommand">
             <span class="user-menu-trigger">
               <span class="avatar-wrap">
-                <el-avatar :size="28" :icon="UserFilled" />
+                <el-avatar :size="28" :src="userStore.avatarUrl" :icon="UserFilled" />
                 <span class="lang-badge">{{ currentLanguage === 'zh-cn' ? '🇨🇳' : '🇺🇸' }}</span>
               </span>
               <el-icon class="trigger-arrow"><ArrowDown /></el-icon>

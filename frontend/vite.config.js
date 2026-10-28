@@ -2,6 +2,8 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
+const backendTarget = process.env.TESTHUB_BACKEND_URL || 'http://127.0.0.1:8000'
+
 export default defineConfig({
   envDir: resolve(__dirname, '..'),
   plugins: [vue()],
@@ -38,27 +40,27 @@ export default defineConfig({
     },
     proxy: {
       '^/api/': {
-        target: 'http://127.0.0.1:8000',
+        target: backendTarget,
         changeOrigin: true,
         secure: false,
       },
       '^/media/': {
-        target: 'http://127.0.0.1:8000',
+        target: backendTarget,
         changeOrigin: true,
         secure: false,
       },
       '^/app-automation-templates/': {
-        target: 'http://127.0.0.1:8000',
+        target: backendTarget,
         changeOrigin: true,
         secure: false,
       },
       '^/app-automation-reports/': {
-        target: 'http://127.0.0.1:8000',
+        target: backendTarget,
         changeOrigin: true,
         secure: false,
       },
       '^/ws/': {
-        target: 'ws://127.0.0.1:8000',
+        target: backendTarget.replace(/^http/, 'ws'),
         ws: true,
         changeOrigin: true,
         configure: (proxy) => {

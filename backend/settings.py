@@ -183,6 +183,14 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'
 
+# 飞书企业自建应用登录：密钥仅由后端读取，租户白名单为空时不开放登录。
+FEISHU_LOGIN_ENABLED = config('FEISHU_LOGIN_ENABLED', default=False, cast=bool)
+FEISHU_APP_ID = config('FEISHU_APP_ID', default='')
+FEISHU_APP_SECRET = config('FEISHU_APP_SECRET', default='')
+FEISHU_REDIRECT_URI = config('FEISHU_REDIRECT_URI', default='')
+FEISHU_ALLOWED_TENANT_KEYS = config('FEISHU_ALLOWED_TENANT_KEYS', default='', cast=parse_csv)
+FEISHU_AUTO_CREATE_USER = config('FEISHU_AUTO_CREATE_USER', default=True, cast=bool)
+
 # DRF Settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [

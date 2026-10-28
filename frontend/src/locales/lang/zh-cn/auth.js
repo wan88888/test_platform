@@ -1,4 +1,13 @@
 export default {
+  feishuTitle: '使用飞书账号登录',
+  feishuContinue: '使用飞书账号登录',
+  otherLoginMethods: '或使用其他方式登录',
+  feishuNotConfigured: '飞书登录尚未配置，请联系管理员创建企业自建应用并完成接入。你仍可使用密码登录。',
+  feishuUnavailable: '暂时无法使用飞书登录，请稍后重试。',
+  feishuAccountHint: '仅限企业内部成员使用 · 飞书身份认证',
+  feishuCompleting: '正在验证飞书身份，请稍候…',
+  feishuBack: '返回登录页',
+  feishuInvalidCallback: '登录信息缺失或已失效，请返回登录页重新授权。',
   // Login page
   welcomeBack: '欢迎回来',
   loginSubtitle: '登录以继续使用一站式智能化测试平台',

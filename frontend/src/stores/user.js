@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/utils/api'
 import { track } from '@/utils/tracker'
+import feishuAuth from '@/api/feishu-auth'
 
 export const useUserStore = defineStore('user', () => {
   const user = ref(null)
@@ -13,6 +14,9 @@ export const useUserStore = defineStore('user', () => {
   let refreshTimer = null
 
   const isAuthenticated = computed(() => !!accessToken.value && !!user.value)
+  const displayName = computed(() => user.value?.display_name ||
+    [user.value?.first_name, user.value?.last_name].filter(Boolean).join(' ') || user.value?.username || '')
+  const avatarUrl = computed(() => user.value?.avatar_url || user.value?.avatar || '')
 
   // 检查token是否即将过期（5分钟内）
   const isTokenExpiringSoon = computed(() => {
@@ -160,6 +164,20 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  const feishuLogin = async (callback) => {
+    const { data } = await feishuAuth.post('/callback/', callback)
+    accessToken.value = data.access
+    refreshToken.value = data.refresh
+    user.value = data.user
+    tokenExpiresAt.value = Date.now() + data.expires_in * 1000
+    localStorage.setItem('access_token', data.access)
+    localStorage.setItem('refresh_token', data.refresh)
+    localStorage.setItem('token_expires_at', tokenExpiresAt.value.toString())
+    localStorage.setItem('user', JSON.stringify(data.user))
+    startAutoRefresh()
+    return data
+  }
+
   // 添加一个标记防止logout过程中的循环调用
   let isLoggingOut = false
 
@@ -260,6 +278,9 @@ export const useUserStore = defineStore('user', () => {
   }
 
   const initAuth = async () => {
+    // OAuth owns authentication on this route. An old JWT must not redirect
+    // away before the new authorization code has been exchanged.
+    if (window.location.pathname === '/auth/feishu/callback') return
     // 从 localStorage 恢复用户信息
     if (!user.value) {
       const savedUser = localStorage.getItem('user')
@@ -303,10 +324,13 @@ export const useUserStore = defineStore('user', () => {
     refreshToken,
     tokenExpiresAt,
     isAuthenticated,
+    displayName,
+    avatarUrl,
     isTokenExpiringSoon,
     isTokenExpired,
     login,
     smsLogin,
+    feishuLogin,
     register,
     logout,
     refreshAccessToken,

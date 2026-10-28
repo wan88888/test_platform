@@ -125,6 +125,28 @@ testhub_platform/
 
 ### 后端部署
 
+#### macOS / Linux 本地体验（无需 MySQL）
+
+安装下述 Python 依赖和前端依赖（`cd frontend && npm ci`）后，在项目根目录运行：
+
+```bash
+bash scripts/start-local.sh
+```
+
+脚本使用 `venv/`（或 `.venv/`）虚拟环境，生成迁移并初始化独立的 SQLite 数据库，
+创建 `localadmin` 管理员和「本地体验项目」，然后启动 Daphne 和 Vite。
+前端地址为 http://127.0.0.1:3001 ，API 文档为 http://127.0.0.1:8001/api/docs/ 。
+随机初始密码保存在 `.local/admin-password.txt`，重复启动不会重置密码或清空数据。
+前台启动后按 Ctrl+C 停止两个服务。端口被占用时脚本会退出。
+
+此配置仅供本机体验：数据和密钥保存在 Git 忽略的 `.local/` 目录，WebSocket 使用单进程内存通道，
+LLM Judge 使用模拟评分。脚本不启动 Celery worker 或定时任务调度器，
+AI 用例生成需另配模型，浏览器和手机自动化需另配驱动、设备及异步执行服务。
+正式部署请使用下面的 MySQL / Redis 配置。
+单独启动前端时，可以通过 `TESTHUB_BACKEND_URL` 环境变量调整代理目标；默认仍为 8000 端口。
+
+#### 标准部署
+
 1. **克隆项目**
 ```bash
 git clone <repository-url>
@@ -197,6 +219,63 @@ npm run build      # 生产构建
 - **后端 API**: http://localhost:8000
 - **API 文档**: http://localhost:8000/api/docs/
 - **Admin 后台**: http://localhost:8000/admin/
+
+### 飞书账号登录配置（企业自建应用）
+
+登录页统一通过「使用飞书账号登录」按钮进入飞书官方 OAuth 授权页，同意后返回 TestHub 首页。
+授权链接设置 `prompt=consent`，明确展示授权确认；飞书已有登录态时可确认当前账号，未登录时由飞书提供扫码等登录方式。
+未配置应用时会提示「尚未配置」，密码和短信登录仍然保留。
+
+1. 打开 [飞书开发者后台](https://open.feishu.cn/app)，选择 **创建企业自建应用**，名称可填 `TestHub 测试平台`。
+2. 在 **应用能力 → 添加应用能力** 中添加 **网页应用**。本机调试时，桌面端主页填 `http://127.0.0.1:3001`。
+3. 在 **安全设置 → 重定向 URL** 中添加完整地址：
+   `http://127.0.0.1:3001/auth/feishu/callback`。
+   使用 `localhost`、不同端口或正式域名时，必须同步修改此处和下方环境变量，保持访问入口与回调同源。
+4. 在 **凭证与基础信息** 获取 **App ID / App Secret**。Secret 仅放在服务端环境变量中，不填入前端代码，也不要提交到 Git。
+5. 设置应用可用范围为测试团队，创建版本并申请发布，由企业管理员按企业审批规则审核。
+   登录仅获取基本身份，不需要消息、审批、文档、手机号、邮箱或 `offline_access` 权限。
+6. 确认本企业的 `tenant_key`。可以在飞书官方 API 调试台选择 **获取用户信息**，使用该应用和已知本企业成员的用户身份调用，读取返回的 `data.tenant_key`。
+   它不是 App ID，也不是用户的 open_id。将确认的值加入下方白名单；白名单为空时不会开放登录。
+7. 在项目根目录的 `.env` 中追加或更新下列配置（不要覆盖已有其他配置）：
+
+   ```dotenv
+   FEISHU_LOGIN_ENABLED=True
+   FEISHU_APP_ID=cli_替换为应用ID
+   FEISHU_APP_SECRET=替换为应用Secret
+   FEISHU_REDIRECT_URI=http://127.0.0.1:3001/auth/feishu/callback
+   FEISHU_ALLOWED_TENANT_KEYS=替换为本企业tenant_key
+   FEISHU_AUTO_CREATE_USER=True
+   ```
+
+8. 执行数据库迁移并重启后端。本地体验可先停止原启动脚本，再运行 `bash scripts/start-local.sh`，脚本会自动迁移。
+   标准部署执行 `python manage.py makemigrations users`、`python manage.py migrate`，然后重启 Django / Daphne。
+9. 从 `http://127.0.0.1:3001/login` 打开登录页，点击「使用飞书账号登录」，在飞书官方页面确认账号并同意授权，成功后返回平台首页。
+   不要让手机直接访问电脑的 `127.0.0.1` 地址；团队使用时需部署为成员可访问的 HTTPS 域名。
+
+账号按 **App ID + open_id** 关联，额外检查企业白名单；不会根据姓名、手机号或邮箱自动合并已有账号。
+默认首次登录创建无密码、无管理员权限的普通用户，由管理员按原项目成员管理流程分配权限。
+每次飞书登录会同步名称和头像，首页及模块顶部优先展示飞书资料；内部用户名保持稳定，本地上传的头像不被覆盖。
+如需关联已有平台用户，可由管理员在 Django Admin 的「飞书账号关联」中选择目标用户，核对应用、企业和 open_id 后保存。
+设置 `FEISHU_AUTO_CREATE_USER=False` 时，仅允许已经关联的账号登录；平台停用的用户无法通过飞书重新登录。
+此接入只负责登录，不会自动同步飞书任务、多维表格、审批或成员权限，也不会保留飞书访问令牌。
+现有 TestHub JWT 生命周期不变，飞书离职/禁用会在下一次飞书认证时被拒绝，已签发的平台会话不会自动实时撤销。
+
+登录请求使用 5 分钟有效的一次性 state、HttpOnly 浏览器绑定 Cookie 和 PKCE S256；重放、跨浏览器回调、企业不匹配均会被拒绝。
+令牌交换使用飞书授权页文档指定的 PKCE 配套 v2 接口；v3 在当前流程中返回 `20049`，因此未采用。失败提示仅包含安全的固定说明和数字错误码，不记录授权码或令牌。
+刷新或取消后请重新发起授权，多个窗口同时发起登录时以最后一次请求为准。
+正式部署要求 HTTPS，同源反向代理 `/api/` 并将 `/auth/feishu/callback` 回落到前端 `index.html`，不要把回调查询参数写入访问日志。
+若使用 Cookie / 跟踪拦截插件导致浏览器绑定 Cookie 丢失，重新允许本站必要 Cookie 后再试。
+
+验证命令（飞书 HTTP 响应使用 mock，不需要真实密钥）：
+
+```bash
+DJANGO_SETTINGS_MODULE=backend.test_settings python manage.py test apps.users.test_feishu
+```
+
+官方参考：[创建自建网页应用](https://open.feishu.cn/document/client-docs/h5/development-guide/step1)、
+[配置重定向 URL](https://open.feishu.cn/document/develop-web-apps/configure-redirect-urls)、
+[获取授权码](https://open.feishu.cn/document/authentication-management/access-token/obtain-oauth-code)、
+[获取用户信息](https://open.feishu.cn/document/server-docs/authentication-management/login-state-management/get)。
 
 ### Docker 部署（可选）
 

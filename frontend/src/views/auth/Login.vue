@@ -105,6 +105,9 @@
           <p>{{ $t('auth.loginSubtitle') }}</p>
         </div>
 
+        <FeishuLogin />
+        <el-divider>{{ $t('auth.otherLoginMethods') }}</el-divider>
+
         <!-- 登录模式切换 -->
         <div class="mode-tabs">
           <button
@@ -251,6 +254,7 @@ import { User, Lock, Phone, Document, MagicStick, Connection, TrendCharts, Arrow
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
 import api from '@/utils/api'
+import FeishuLogin from './FeishuLogin.vue'
 
 const router = useRouter()
 const userStore = useUserStore()

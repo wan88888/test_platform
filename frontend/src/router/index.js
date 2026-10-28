@@ -75,6 +75,11 @@ const routes = [
         meta: { requiresGuest: true }
     },
     {
+        path: '/auth/feishu/callback',
+        name: 'FeishuCallback',
+        component: () => import('@/views/auth/FeishuCallback.vue')
+    },
+    {
         path: '/ai-generation/assistant',
         name: 'Assistant',
         component: () => import('@/views/assistant/AssistantView.vue'),
@@ -711,7 +716,7 @@ router.beforeEach(async (to, _from, next) => {
 
     // SSO 授权码交换：在登录态检查之前，先把 URL 中的 code 换成 JWT
     const code = to.query.code
-    if (code && !userStore.accessToken) {
+    if (code && to.name !== 'FeishuCallback' && !userStore.accessToken) {
         try {
             const api = (await import('@/utils/api')).default
             const response = await api.post('/auth/exchange-token/', {
@@ -739,7 +744,7 @@ router.beforeEach(async (to, _from, next) => {
     }
 
     // 有 token 但没有用户信息时，初始化认证
-    if (!userStore.user && userStore.accessToken) {
+    if (to.name !== 'FeishuCallback' && !userStore.user && userStore.accessToken) {
         try {
             await userStore.initAuth()
         } catch (error) {
@@ -757,6 +762,9 @@ router.beforeEach(async (to, _from, next) => {
 })
 
 router.afterEach((to, from) => {
+    // OAuth callback URLs contain short-lived credentials; exclude both the
+    // landing page and the transition away from analytics/referrer payloads.
+    if (to.name === 'FeishuCallback' || from.name === 'FeishuCallback') return
     trackPageView(to, from)
 })
 

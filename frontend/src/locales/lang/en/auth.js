@@ -1,4 +1,13 @@
 export default {
+  feishuTitle: 'Sign in with Feishu',
+  feishuContinue: 'Sign in with Feishu',
+  otherLoginMethods: 'Or use another sign-in method',
+  feishuNotConfigured: 'Feishu sign-in is not configured. Ask your administrator to set up an internal app. Password login remains available.',
+  feishuUnavailable: 'Feishu sign-in is temporarily unavailable. Please try again later.',
+  feishuAccountHint: 'For organization members · Verified with Feishu',
+  feishuCompleting: 'Verifying your Feishu account…',
+  feishuBack: 'Back to login',
+  feishuInvalidCallback: 'Login details are missing or expired. Please return to the login page and authorize again.',
   // Login page
   welcomeBack: 'Welcome Back',
   loginSubtitle: 'Sign in to continue with the all-in-one intelligent testing platform',

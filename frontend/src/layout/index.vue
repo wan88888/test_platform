@@ -409,8 +409,8 @@
               <!-- 用户信息 -->
               <el-dropdown @command="handleCommand" class="user-dropdown">
                 <span class="user-info">
-                  <el-avatar :size="32" :src="userStore.user?.avatar" />
-                  <span class="username">{{ userStore.user?.username }}</span>
+                  <el-avatar :size="32" :src="userStore.avatarUrl" :icon="UserFilled" />
+                  <span class="username">{{ userStore.displayName }}</span>
                   <el-icon><ArrowDown /></el-icon>
                 </span>
                 <template #dropdown>
@@ -444,7 +444,7 @@ import {
   Monitor, Folder, Document, Flag, Check, Collection, VideoPlay,
   DataAnalysis, ChatDotRound, DocumentCopy, Link, MagicStick,
   Odometer, Timer, Setting, AlarmClock, Bell, Aim, Edit, Cpu, ArrowDown, Cellphone, Connection, FolderOpened, Tickets, Plus,
-  SetUp, TrendCharts
+  SetUp, TrendCharts, UserFilled
 } from '@element-plus/icons-vue'
 import logoSvg from '@/assets/images/logo.svg'
 import logoHomePng from '@/assets/images/logo_home.png'
