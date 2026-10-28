@@ -1,4 +1,4 @@
-"""Feishu OAuth login, with browser-bound state and PKCE. No provider tokens stored."""
+"""Feishu OAuth login, with browser-bound state and PKCE."""
 import base64
 import hashlib
 import logging
@@ -42,6 +42,7 @@ TOKEN_ERRORS = {
     20009: '企业尚未安装该飞书应用，请联系应用管理员。',
     20010: '当前账号没有该飞书应用的使用权限，请联系管理员检查应用可用范围。',
     20024: '飞书授权码与当前应用不匹配，请返回登录页重新授权。',
+    20027: '飞书应用缺少请求的用户身份权限，请管理员开通相应权限并发布应用版本后重新授权。',
     20048: '飞书应用不存在，请管理员检查 App ID。',
     20049: '飞书授权安全校验失败（PKCE），请返回登录页重新授权；若仍失败请联系管理员。',
     20050: '飞书授权服务异常，请稍后重新授权。',
@@ -105,6 +106,10 @@ def login_config(request):
 @authentication_classes([])
 @permission_classes([AllowAny])
 def authorize(request):
+    return start_authorization(request)
+
+
+def start_authorization(request, document_user=None, document_scopes=None):
     if not is_configured():
         return Response({'error': '飞书登录尚未配置，请联系管理员。'}, status=503)
     # The callback must return to the same browser origin that receives the binding cookie.
@@ -119,17 +124,25 @@ def authorize(request):
     browser_secret = secrets.token_urlsafe(32)
     verifier = secrets.token_urlsafe(64)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
+    if document_user is not None and document_scopes is None:
+        from apps.requirement_analysis.feishu_documents import DOCUMENT_SCOPES
+        document_scopes = DOCUMENT_SCOPES
     FeishuLoginAttempt.objects.create(
         state_hash=_hash(state), browser_hash=_hash(browser_secret), code_verifier=verifier,
         app_id=settings.FEISHU_APP_ID, redirect_uri=settings.FEISHU_REDIRECT_URI,
         expires_at=now + timedelta(seconds=ATTEMPT_TTL),
+        document_user=document_user,
+        document_scopes=list(document_scopes or []),
     )
-    url = AUTHORIZE_URL + '?' + urlencode({
+    params = {
         'client_id': settings.FEISHU_APP_ID, 'redirect_uri': settings.FEISHU_REDIRECT_URI,
         'response_type': 'code', 'state': state,
         'prompt': 'consent',
         'code_challenge': challenge, 'code_challenge_method': 'S256',
-    })
+    }
+    if document_user is not None:
+        params['scope'] = ' '.join(document_scopes)
+    url = AUTHORIZE_URL + '?' + urlencode(params)
     response = Response({'authorize_url': url})
     response.set_cookie(COOKIE_NAME, browser_secret, max_age=ATTEMPT_TTL,
                         httponly=True, secure=callback.scheme == 'https', samesite='Lax')
@@ -162,7 +175,10 @@ def fetch_user_info(code, attempt):
         if (profile_response.status_code != 200 or not isinstance(profile, dict)
                 or profile.get('code') != 0 or not isinstance(profile.get('data'), dict)):
             raise FeishuLoginError('无法验证飞书身份，请确认账号有效且具有应用使用权限。', 403)
-        return profile['data']
+        result = profile['data']
+        if attempt.document_user_id:
+            result['_document_grant'] = token
+        return result
     except (requests.RequestException, ValueError):
         # Never echo provider responses, authorization codes, secrets or access tokens.
         raise FeishuLoginError('暂时无法连接飞书，请稍后重新授权。', 502) from None
@@ -238,13 +254,29 @@ def callback(request):
             raise FeishuLoginError('你已取消飞书授权，可以重新授权或使用密码登录。')
         if not data.get('code'):
             raise FeishuLoginError('缺少飞书授权码，请重新授权。')
-        user = resolve_user(fetch_user_info(data['code'], attempt))
+        profile = fetch_user_info(data['code'], attempt)
+        document_grant = profile.pop('_document_grant', None)
+        if attempt.document_user_id:
+            # Check before resolve_user: granting documents must not switch accounts.
+            linked = FeishuIdentity.objects.filter(user_id=attempt.document_user_id,
+                app_id=attempt.app_id, open_id=profile.get('open_id')).exists()
+            if not linked:
+                raise FeishuLoginError('请使用当前平台账号关联的飞书账号授权文档访问。', 403)
+        user = resolve_user(profile)
+        if attempt.document_user_id:
+            from apps.requirement_analysis.feishu_documents import save_grant, FeishuDocumentError
+            try:
+                save_grant(user, document_grant, required_scopes=attempt.document_scopes or None)
+            except FeishuDocumentError as exc:
+                raise FeishuLoginError(str(exc), exc.status) from None
         refresh = RefreshToken.for_user(user)
         user.last_login = now
         user.save(update_fields=['last_login'])
         response = Response({'user': UserSerializer(user).data,
                              'access': str(refresh.access_token), 'refresh': str(refresh),
                              'expires_in': int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds())})
+        if attempt.document_user_id:
+            response.data['documents_authorized'] = True
     except FeishuLoginError as exc:
         response = Response({'error': str(exc)}, status=exc.status)
     response.delete_cookie(COOKIE_NAME, samesite='Lax')

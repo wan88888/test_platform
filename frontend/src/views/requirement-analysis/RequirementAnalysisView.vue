@@ -114,6 +114,8 @@
     </div>
 
     <div class="main-content">
+      <FeishuRequirementInput :busy="isGenerating" :task-id="feishuTaskId"
+        @generate="generateFromFeishu" />
       <!-- 手动输入需求描述区域 -->
       <div class="manual-input-section" v-if="!isGenerating && !showResults">
         <div class="manual-input-card">
@@ -157,11 +159,6 @@
             </button>
           </div>
         </div>
-      </div>
-
-      <!-- 分隔线 -->
-      <div class="divider" v-if="!isGenerating && !showResults">
-        <span>{{ $t('requirementAnalysis.dividerOr') }}</span>
       </div>
 
       <!-- 文档上传区域 -->
@@ -314,7 +311,7 @@
             </button>
           </div>
           <button v-else class="cancel-generation-btn" @click="cancelGeneration">
-            {{ $t('requirementAnalysis.cancelGeneration') }}
+            {{ activeFeishuGeneration ? '返回输入（后台继续生成）' : $t('requirementAnalysis.cancelGeneration') }}
           </button>
         </div>
       </div>
@@ -343,13 +340,17 @@ import api from '@/utils/api'
 import { ElMessage } from 'element-plus'
 import * as XLSX from 'xlsx'
 import { useUserStore } from '@/stores/user'
+import FeishuRequirementInput from '@/components/FeishuRequirementInput.vue'
 
 export default {
   name: 'RequirementAnalysisView',
+  components: { FeishuRequirementInput },
   data() {
     return {
       // 全局输出模式设置
       globalOutputMode: 'stream',  // 默认使用流式输出
+      feishuTaskId: '',
+      activeFeishuGeneration: false,
 
       // 手动输入需求
       manualInput: {
@@ -478,6 +479,11 @@ export default {
   },
 
   methods: {
+    async generateFromFeishu({ title, url, outputType }) {
+      await this.startGeneration(title, '', null, this.globalOutputMode,
+        { feishu_source_url: url, feishu_output: true,
+          feishu_output_type: outputType })
+    },
     async loadProjects() {
       try {
         const response = await api.get('/projects/')
@@ -730,7 +736,9 @@ export default {
       }
     },
 
-    async startGeneration(title, requirementText, projectId, outputMode = 'stream') {
+    async startGeneration(title, requirementText, projectId, outputMode = 'stream', source = {}) {
+      if (this.isGenerating) return
+      this.activeFeishuGeneration = Boolean(source.feishu_output)
       // 在开始生成前，主动刷新token确保生成过程中不会过期
       try {
         const userStore = useUserStore()
@@ -755,6 +763,7 @@ export default {
       try {
         // 调用新的生成API
         const requestData = {
+          ...source,
           title: title,
           requirement_text: requirementText,
           use_writer_model: true,
@@ -767,9 +776,10 @@ export default {
           requestData.project = projectId
         }
 
-        const response = await api.post('/requirement-analysis/testcase-generation/generate/', requestData)
+        const response = await api.post('/requirement-analysis/testcase-generation/generate/', requestData, { timeout: 120000 })
 
         this.currentTaskId = response.data.task_id
+        if (source.feishu_output) this.feishuTaskId = this.currentTaskId
         this.progressText = this.$t('requirementAnalysis.taskCreated')
 
         ElMessage.success(this.$t('requirementAnalysis.generateSuccess'))
@@ -779,7 +789,7 @@ export default {
         this.startRenderTimer()
 
         // 根据输出模式选择不同的进度获取方式
-        if (outputMode === 'stream') {
+        if (outputMode === 'stream' && !source.feishu_output) {
           this.startStreamingProgress()
         } else {
           this.startPolling()
@@ -973,6 +983,11 @@ export default {
           const task = response.data
 
           // 更新进度显示
+          if (task.stream_buffer || task.generated_test_cases) {
+            this.streamedContent = task.stream_buffer || task.generated_test_cases
+          }
+          if (task.review_feedback) this.streamedReviewContent = task.review_feedback
+          if (task.final_test_cases) this.finalTestCases = task.final_test_cases
           if (task.status === 'generating') {
             this.currentStep = 2
             this.progressText = this.$t('requirementAnalysis.statusGenerating')
@@ -1036,7 +1051,7 @@ export default {
       }
       this.isGenerating = false
       this.currentTaskId = null
-      ElMessage.info(this.$t('requirementAnalysis.generationCancelled'))
+      ElMessage.info(this.activeFeishuGeneration ? '后台继续生成，完成后可在生成记录中查看飞书表格。' : this.$t('requirementAnalysis.generationCancelled'))
     },
 
     // 下载测试用例为xlsx文件
@@ -1809,7 +1824,7 @@ export default {
   padding: 30px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   border: 1px solid #e1e8ed;
-  margin-bottom: 30px;
+  margin-bottom: 28px;
 }
 
 .manual-input-card h2, .upload-card h2 {
@@ -1946,29 +1961,6 @@ export default {
 .generate-manual-btn:disabled, .generate-btn:disabled {
   background: #bdc3c7;
   cursor: not-allowed;
-}
-
-.divider {
-  text-align: center;
-  margin: 40px 0;
-  position: relative;
-}
-
-.divider::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: #ddd;
-}
-
-.divider span {
-  background: white;
-  padding: 0 20px;
-  color: #666;
-  font-size: 1rem;
 }
 
 .upload-area {

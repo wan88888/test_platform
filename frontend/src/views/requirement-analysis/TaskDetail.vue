@@ -21,6 +21,7 @@
     </div>
 
     <!-- 需求描述折叠卡片 -->
+    <FeishuRequirementInput v-if="task.has_feishu_output" :task-id="task.task_id" result-only />
     <div v-if="task.requirement_text" class="requirement-description-card">
       <el-collapse>
         <el-collapse-item name="requirement">
@@ -258,9 +259,11 @@ import api from '@/utils/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DocumentCopy } from '@element-plus/icons-vue'
 import * as XLSX from 'xlsx'
+import FeishuRequirementInput from '@/components/FeishuRequirementInput.vue'
 
 export default {
   name: 'TaskDetail',
+  components: { FeishuRequirementInput },
   data() {
     return {
       taskId: '',

@@ -36,8 +36,8 @@ onMounted(async () => {
     return
   }
   try {
-    await userStore.feishuLogin({ code, state, error })
-    await router.replace('/home')
+    const result = await userStore.feishuLogin({ code, state, error })
+    await router.replace(result.documents_authorized ? '/ai-generation/requirement-analysis' : '/home')
   } catch (err) {
     errorMessage.value = err.response?.data?.error || t('auth.feishuUnavailable')
     pending.value = false

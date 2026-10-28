@@ -1,5 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from . import feishu_views
 from .views import (
     RequirementDocumentViewSet,
     RequirementAnalysisViewSet,
@@ -31,6 +32,9 @@ router.register(r'config', ConfigStatusViewSet, basename='configstatus')
 app_name = 'requirement_analysis'
 
 urlpatterns = [
+    path('feishu/access/', feishu_views.document_access),
+    path('feishu/authorize/', feishu_views.document_authorize),
+    path('feishu/tasks/<str:task_id>/', feishu_views.export_status),
     # DRF路由
     path('', include(router.urls)),
 

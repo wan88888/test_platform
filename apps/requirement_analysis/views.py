@@ -903,7 +903,7 @@ def analyze_text(request):
 
 class AIModelConfigViewSet(viewsets.ModelViewSet):
     """AI模型配置视图集"""
-    queryset = AIModelConfig.objects.all()
+    queryset = AIModelConfig.objects.select_related('created_by').prefetch_related('created_by__feishu_identities')
     serializer_class = AIModelConfigSerializer
 
     def get_queryset(self):
@@ -1217,7 +1217,7 @@ class AIModelConfigViewSet(viewsets.ModelViewSet):
 
 class PromptConfigViewSet(viewsets.ModelViewSet):
     """提示词配置视图集"""
-    queryset = PromptConfig.objects.all()
+    queryset = PromptConfig.objects.select_related('created_by').prefetch_related('created_by__feishu_identities')
     serializer_class = PromptConfigSerializer
 
     def get_queryset(self):
@@ -1438,7 +1438,7 @@ class GenerationConfigViewSet(viewsets.ModelViewSet):
 
 class TestCaseGenerationTaskViewSet(viewsets.ModelViewSet):
     """测试用例生成任务视图集"""
-    queryset = TestCaseGenerationTask.objects.all()
+    queryset = TestCaseGenerationTask.objects.select_related('feishu_export')
     serializer_class = TestCaseGenerationTaskSerializer
     pagination_class = TestCaseGenerationTaskPagination
     http_method_names = ['get', 'post', 'patch', 'delete']  # 允许GET、POST、PATCH和DELETE方法
@@ -1446,6 +1446,10 @@ class TestCaseGenerationTaskViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        # Imported private documents and their output stay scoped to their owner.
+        from django.db.models import Q
+        user = getattr(self.request, 'user', None)
+        queryset = queryset.filter(Q(feishu_export__isnull=True) | Q(created_by_id=getattr(user, 'pk', None)))
 
         # 安全检查：确保request有query_params属性
         if not hasattr(self.request, 'query_params'):
@@ -1472,6 +1476,22 @@ class TestCaseGenerationTaskViewSet(viewsets.ModelViewSet):
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
             validated_data = serializer.validated_data
+
+            from .feishu_documents import FeishuClient, FeishuDocumentError
+            feishu_destination = {}
+            try:
+                if validated_data.get('feishu_source_url') or validated_data.get('feishu_output'):
+                    if not request.user.is_authenticated:
+                        return Response({'error': '请先登录。'}, status=401)
+                    feishu_client = FeishuClient(request.user, validated_data.get('feishu_output_type', 'sheet'))
+                    if validated_data.get('feishu_output_type') == 'mindnote':
+                        feishu_destination = feishu_client.personal_mindnote_destination()
+                    if validated_data.get('feishu_source_url'):
+                        document = feishu_client.read_document(validated_data['feishu_source_url'])
+                        validated_data['title'] = validated_data.get('title') or document['title']
+                        validated_data['requirement_text'] = document['text']
+            except FeishuDocumentError as exc:
+                return Response({'error': str(exc)}, status=exc.status)
 
             # 获取活跃的配置
             writer_config = None
@@ -1547,7 +1567,13 @@ class TestCaseGenerationTaskViewSet(viewsets.ModelViewSet):
             )
 
             if task_serializer.is_valid():
-                task = task_serializer.save()
+                from django.db import transaction
+                with transaction.atomic():
+                    task = task_serializer.save()
+                    if validated_data.get('feishu_output'):
+                        from .models import FeishuCaseExport
+                        FeishuCaseExport.objects.create(task=task,
+                            output_type=validated_data.get('feishu_output_type', 'sheet'), destination=feishu_destination)
 
                 # 异步执行生成任务
                 def run_generation_task():
@@ -1960,6 +1986,12 @@ class TestCaseGenerationTaskViewSet(viewsets.ModelViewSet):
                                     task.completed_at = timezone.now()
                                     task.save(update_fields=['status', 'progress', 'completed_at', 'final_test_cases'])
                                     logger.info(f"任务 {task.task_id} 已完成")
+                                    if validated_data.get('feishu_output'):
+                                        from .feishu_documents import export_task
+                                        try:
+                                            export_task(task)
+                                        except Exception:
+                                            logger.warning('飞书表格同步中断；生成结果已保留。')
 
                                 finally:
                                     try:
@@ -2017,6 +2049,7 @@ class TestCaseGenerationTaskViewSet(viewsets.ModelViewSet):
                 'status': task.status,
                 'progress': task.progress,
                 'generated_test_cases': task.generated_test_cases,
+                'stream_buffer': task.stream_buffer,
                 'review_feedback': task.review_feedback,
                 'final_test_cases': task.final_test_cases,
                 'error_message': task.error_message,
@@ -2087,6 +2120,10 @@ class TestCaseGenerationTaskViewSet(viewsets.ModelViewSet):
 
             # 获取任务对象
             task = TestCaseGenerationTask.objects.filter(task_id=task_id).first()
+            if task and hasattr(task, 'feishu_export') and (
+                    not request.user.is_authenticated or task.created_by_id != request.user.pk):
+                from django.http import HttpResponse
+                return HttpResponse(status=404)
             if not task:
                 logger.warning(f"SSE连接失败: 任务未找到, task_id={task_id}")
                 # 返回JSON错误而不是SSE
@@ -2486,7 +2523,7 @@ class TestCaseGenerationTaskViewSet(viewsets.ModelViewSet):
         """获取已保存的测试用例记录列表"""
         try:
             # 获取已保存到记录的任务
-            saved_tasks = TestCaseGenerationTask.objects.filter(
+            saved_tasks = self.get_queryset().filter(
                 is_saved_to_records=True,
                 status='completed'
             ).order_by('-saved_at')

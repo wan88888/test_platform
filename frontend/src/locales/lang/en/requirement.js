@@ -6,7 +6,7 @@ export default {
 
     // Output Mode
     outputModeTitle: '📤 Output Mode Settings',
-    outputModeDesc: 'Select the output method for test case generation (applies to both manual input and document upload)',
+    outputModeDesc: 'Choose how generated content is displayed for manual input, uploaded documents, and Feishu document links.',
     realtimeStream: '⚡ Real-time Stream',
     realtimeStreamDesc: 'Display character by character, smooth experience, suitable for large requirement documents',
     completeOutput: '📄 Complete Output',

@@ -332,6 +332,22 @@ class GenerationConfig(models.Model):
         return cls.objects.filter(is_active=True).first()
 
 
+class FeishuCaseExport(models.Model):
+    """One output per task. Persist destination before writing to make retries safe."""
+    task = models.OneToOneField('TestCaseGenerationTask', on_delete=models.CASCADE, related_name='feishu_export')
+    status = models.CharField(max_length=20, default='pending')
+    output_type = models.CharField(max_length=20, default='sheet', choices=[('sheet', '飞书表格'), ('mindnote', '飞书思维笔记')])
+    destination = models.JSONField(default=dict)
+    mindnote_token = models.CharField(max_length=128, blank=True)
+    node_operations = models.JSONField(default=dict)
+    spreadsheet_token = models.CharField(max_length=128, blank=True)
+    sheet_id = models.CharField(max_length=128, blank=True)
+    url = models.URLField(max_length=2048, blank=True)
+    rows = models.JSONField(default=list)
+    error = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class TestCaseGenerationTask(models.Model):
     """测试用例生成任务模型"""
     STATUS_CHOICES = [

@@ -218,6 +218,30 @@ class FeishuLoginTests(TestCase):
         self.assertEqual(serializer.data['display_name'], 'Local')
         self.assertEqual(serializer.data['avatar_url'], user.avatar.url)
 
+    def test_configuration_creator_labels_use_each_creators_feishu_identity(self):
+        from apps.requirement_analysis.models import AIModelConfig, PromptConfig
+        from apps.requirement_analysis.serializers import AIModelConfigSerializer, PromptConfigSerializer
+
+        first = User.objects.create_user(username='feishu_internal_first')
+        second = User.objects.create_user(username='feishu_internal_second')
+        local = User.objects.create_user(username='local-user')
+        for user, name in [(first, '创建者甲'), (second, '创建者乙')]:
+            FeishuIdentity.objects.create(user=user, app_id='cli_test', open_id=f'ou_{user.pk}',
+                                          tenant_key='tenant_allowed', display_name=name)
+        # An identity from another application must not supply the display name.
+        FeishuIdentity.objects.create(user=local, app_id='another-app', open_id='ou_other',
+                                      tenant_key='tenant_allowed', display_name='其他应用姓名')
+        for user, expected in [(first, '创建者甲'), (second, '创建者乙'), (local, 'local-user')]:
+            for model, serializer in [(PromptConfig, PromptConfigSerializer), (AIModelConfig, AIModelConfigSerializer)]:
+                data = serializer(model(created_by=user)).data
+                self.assertEqual(data['created_by_name'], expected)
+                self.assertEqual(data['created_by'], user.pk)
+        identity = first.feishu_identities.get(app_id='cli_test')
+        identity.display_name = '更新后的创建者姓名'
+        identity.save(update_fields=['display_name'])
+        self.assertEqual(PromptConfigSerializer(PromptConfig(created_by=first)).data['created_by_name'],
+                         '更新后的创建者姓名')
+
     def test_disabled_or_mismatched_linked_user_is_rejected(self):
         user = User.objects.create_user(username='disabled', is_active=False)
         identity = FeishuIdentity.objects.create(user=user, app_id='cli_test',

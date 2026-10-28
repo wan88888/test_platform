@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+from django.conf import settings
 
 class User(AbstractUser):
     """扩展用户模型"""
@@ -11,6 +12,12 @@ class User(AbstractUser):
     is_active = models.BooleanField(default=True, verbose_name='是否激活')
     created_at = models.DateTimeField(default=timezone.now, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    def get_display_name(self):
+        """Resolve a person's label without changing their login identifier."""
+        identity = next((item for item in self.feishu_identities.all()
+                         if item.app_id == settings.FEISHU_APP_ID), None)
+        return (identity.display_name if identity else '') or self.get_full_name() or self.username
     
     class Meta:
         db_table = 'users_user'
@@ -68,3 +75,14 @@ class FeishuLoginAttempt(models.Model):
     redirect_uri = models.URLField(max_length=2048)
     expires_at = models.DateTimeField(db_index=True)
     consumed_at = models.DateTimeField(null=True)
+    document_user = models.ForeignKey(User, null=True, on_delete=models.CASCADE)
+    document_scopes = models.JSONField(default=list)
+
+
+class FeishuDocumentGrant(models.Model):
+    """Short-lived, encrypted user grant; never returned by a serializer."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    app_id = models.CharField(max_length=128)
+    encrypted_token = models.TextField()
+    scopes = models.JSONField(default=list)
+    expires_at = models.DateTimeField()

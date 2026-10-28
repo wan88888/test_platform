@@ -6,7 +6,7 @@ export default {
 
     // Output Mode
     outputModeTitle: '📤 输出模式设置',
-    outputModeDesc: '选择测试用例生成的输出方式（适用于手动输入和文档上传两种方式）',
+    outputModeDesc: '选择生成内容的展示方式，支持手动输入、上传文档和飞书文档链接。',
     realtimeStream: '⚡ 实时流式输出',
     realtimeStreamDesc: '内容逐字显示，体验流畅，适合大需求文档',
     completeOutput: '📄 完整输出',

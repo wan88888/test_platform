@@ -160,7 +160,7 @@ class AIModelConfigSerializer(serializers.ModelSerializer):
     """AI模型配置序列化器"""
     model_type_display = serializers.CharField(source='get_model_type_display', read_only=True)
     role_display = serializers.CharField(source='get_role_display', read_only=True)
-    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_display_name', read_only=True)
     api_key_masked = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
@@ -202,7 +202,7 @@ class AIModelConfigSerializer(serializers.ModelSerializer):
 class PromptConfigSerializer(serializers.ModelSerializer):
     """提示词配置序列化器"""
     prompt_type_display = serializers.CharField(source='get_prompt_type_display', read_only=True)
-    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_display_name', read_only=True)
     
     class Meta:
         model = PromptConfig
@@ -253,6 +253,10 @@ class TestCaseGenerationTaskSerializer(serializers.ModelSerializer):
     reviewer_model_name = serializers.CharField(source='reviewer_model_config.name', read_only=True)
     writer_prompt_name = serializers.CharField(source='writer_prompt_config.name', read_only=True)
     reviewer_prompt_name = serializers.CharField(source='reviewer_prompt_config.name', read_only=True)
+    has_feishu_output = serializers.SerializerMethodField()
+
+    def get_has_feishu_output(self, obj):
+        return hasattr(obj, 'feishu_export')
     
     class Meta:
         model = TestCaseGenerationTask
@@ -261,7 +265,7 @@ class TestCaseGenerationTaskSerializer(serializers.ModelSerializer):
                  'reviewer_model_config', 'reviewer_model_name', 'writer_prompt_config', 'writer_prompt_name',
                  'reviewer_prompt_config', 'reviewer_prompt_name', 'generated_test_cases',
                  'review_feedback', 'final_test_cases', 'generation_log', 'error_message',
-                 'created_by', 'created_by_name', 'created_at', 'updated_at', 'completed_at']
+                 'created_by', 'created_by_name', 'created_at', 'updated_at', 'completed_at', 'has_feishu_output']
         read_only_fields = ['task_id', 'status', 'progress', 'generated_test_cases', 
                           'review_feedback', 'final_test_cases', 'generation_log', 
                           'error_message', 'created_by', 'completed_at']
@@ -286,10 +290,28 @@ class TestCaseGenerationTaskSerializer(serializers.ModelSerializer):
 
 class TestCaseGenerationRequestSerializer(serializers.Serializer):
     """新的测试用例生成请求序列化器"""
-    title = serializers.CharField(max_length=200, help_text="任务标题")
-    requirement_text = serializers.CharField(help_text="需求描述")
+    title = serializers.CharField(max_length=200, required=False, allow_blank=True, help_text="任务标题")
+    requirement_text = serializers.CharField(required=False, allow_blank=True, help_text="需求描述")
+    feishu_source_url = serializers.CharField(max_length=2048, required=False)
+    feishu_output = serializers.BooleanField(default=False)
+    feishu_output_type = serializers.ChoiceField(choices=['sheet', 'mindnote'], default='sheet')
     use_writer_model = serializers.BooleanField(default=True, help_text="是否使用编写模型")
     use_reviewer_model = serializers.BooleanField(default=True, help_text="是否使用评审模型")
+
+    def validate(self, data):
+        if data.get('feishu_source_url'):
+            from .feishu_documents import parse_document_url, FeishuDocumentError
+            try:
+                parse_document_url(data['feishu_source_url'])
+                data['feishu_output'] = True
+            except FeishuDocumentError as exc:
+                raise serializers.ValidationError(str(exc)) from None
+        elif not data.get('title') or not data.get('requirement_text'):
+            raise serializers.ValidationError('请填写标题和需求正文，或提供飞书需求文档链接。')
+        if data.get('feishu_output_type') == 'mindnote':
+            if not data.get('feishu_output'):
+                raise serializers.ValidationError('思维笔记输出需要启用飞书输出。')
+        return data
 
 
 class GenerationConfigSerializer(serializers.ModelSerializer):
